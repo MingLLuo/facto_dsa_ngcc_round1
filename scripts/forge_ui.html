@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Forge a Facto-DSA signature</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: light-dark(#fbfaf8, #17181a);
+    --panel: light-dark(#ffffff, #202225);
+    --ink: light-dark(#1c1d1f, #ececed);
+    --muted: light-dark(#5d6166, #a2a6ab);
+    --line: light-dark(#dcd9d4, #33363a);
+    --accent: light-dark(#2f6f4f, #7fc79b);
+    --warn: light-dark(#a5561f, #e0a06a);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 28px 20px 60px; background: var(--bg); color: var(--ink);
+    font: 15px/1.55 ui-sans-serif, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 760px; margin: 0 auto; }
+  h1 { font-size: 21px; font-weight: 500; margin: 0 0 6px; }
+  h2 { font-size: 16px; font-weight: 500; margin: 0 0 10px; }
+  p { margin: 0 0 12px; }
+  .sub, .note { color: var(--muted); font-size: 13px; }
+  .card {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; padding: 16px 18px; margin-bottom: 14px;
+  }
+  label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+  input[type=text], textarea, select {
+    font: inherit; width: 100%; color: var(--ink); background: var(--bg);
+    border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px;
+  }
+  textarea { resize: vertical; min-height: 62px; }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+  .row > div { flex: 1 1 200px; }
+  .modes { display: flex; gap: 14px; margin-bottom: 12px; font-size: 14px; }
+  .modes label { display: flex; gap: 6px; align-items: center; margin: 0; color: var(--ink); }
+  button {
+    font: inherit; color: var(--ink); background: transparent;
+    border: 1px solid var(--accent); border-radius: 8px; padding: 8px 16px; cursor: pointer;
+  }
+  button[disabled] { opacity: .55; cursor: default; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 400; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .ok { color: var(--accent); }
+  .bad { color: var(--warn); }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; }
+  .grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 4px; }
+  .cell {
+    border: 1px solid var(--line); border-radius: 6px; padding: 5px 2px;
+    text-align: center; font-size: 12px; font-variant-numeric: tabular-nums;
+  }
+  .sig { border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; margin-bottom: 12px; }
+  .sig h2 { margin-bottom: 8px; }
+  .hex { word-break: break-all; color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Forge a Facto-DSA signature for your own message</h1>
+  <p class="sub" id="info">loading&hellip;</p>
+
+  <div class="card">
+    <div class="modes">
+      <label><input type="radio" name="mode" value="message" checked> message</label>
+      <label><input type="radio" name="mode" value="target"> raw target</label>
+    </div>
+    <div id="message-block">
+      <label for="message">Message (hashed by the submitters&rsquo; own sm3/xof code)</label>
+      <textarea id="message">attack demo: my own message</textarea>
+    </div>
+    <div id="target-block" hidden>
+      <label for="target">Target: 13 decimal values, or 26 bytes of hex (little-endian)</label>
+      <textarea id="target" placeholder="e.g. 12345 67 ... (13 numbers)"></textarea>
+      <p class="note">A raw target is checked coefficient by coefficient; the
+        submitters&rsquo; <code>sig_verify</code> only applies to a message.</p>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <div style="flex:0 0 140px">
+        <label for="count">Signatures</label>
+        <select id="count"><option>1</option><option selected>3</option><option>5</option></select>
+      </div>
+      <div style="flex:0 0 auto"><button id="go">Forge</button></div>
+    </div>
+  </div>
+
+  <div id="error" class="card bad" hidden></div>
+  <div id="results"></div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+let info = {};
+
+fetch("/info").then(r => r.json()).then(data => {
+  info = data;
+  $("info").innerHTML =
+    `public key <b>${data.key_bytes.toLocaleString()} bytes</b>, `
+    + `<code>q = ${data.q}</code>, <code>n = ${data.n}</code>, <code>m = ${data.m}</code> `
+    + `&middot; structure recovered once in ${data.recovery_seconds} s, then every request is cheap.`;
+  $("count").value = String(data.count_default);
+}).catch(() => { $("info").textContent = "could not read /info"; });
+
+document.querySelectorAll('input[name=mode]').forEach(radio => {
+  radio.onchange = () => {
+    const message = document.querySelector('input[name=mode]:checked').value === "message";
+    $("message-block").hidden = !message;
+    $("target-block").hidden = message;
+  };
+});
+
+function cells(values) {
+  return `<div class="grid">` + values.map(v =>
+    `<div class="cell mono">${v}</div>`).join("") + `</div>`;
+}
+
+$("go").onclick = async () => {
+  const mode = document.querySelector('input[name=mode]:checked').value;
+  $("error").hidden = true;
+  $("results").innerHTML = `<div class="card">forging&hellip;</div>`;
+  $("go").disabled = true;
+  try {
+    const response = await fetch("/forge", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({mode, message: $("message").value,
+                            target: $("target").value, count: Number($("count").value)}),
+    });
+    const data = await response.json();
+    if (data.error) throw new Error(data.error);
+    render(data);
+  } catch (error) {
+    $("error").hidden = false;
+    $("error").textContent = String(error.message || error);
+    $("results").innerHTML = "";
+  } finally {
+    $("go").disabled = false;
+  }
+};
+
+function render(data) {
+  const header = `<div class="card">
+    <h2>Target <span class="note">${data.mode === "target" ? "supplied" : "from " + JSON.stringify(data.message)}</span></h2>
+    ${cells(data.target)}
+    <p class="note" style="margin:12px 0 0">${data.count} of ${data.requested} requested signatures,
+       ${data.seconds} s total.</p></div>`;
+  const cards = data.signatures.map((signature, index) => `
+    <div class="sig">
+      <h2>Signature ${index + 1} <span class="note">seed ${signature.seed}, ${signature.seconds} s</span></h2>
+      ${cells(signature.z)}
+      <table style="margin-top:10px">
+        <tr><th>every public cubic coefficient of P(z)</th>
+            <td class="num ${signature.coefficients_match ? "ok" : "bad"}">
+            ${signature.coefficients_match ? "equal to h" : "mismatch"}</td></tr>
+        <tr><th>submitters&rsquo; sig_verify</th>
+            <td class="num ${signature.sig_verify_return === 0 ? "ok" : (signature.sig_verify_return === null ? "" : "bad")}">
+            ${signature.sig_verify_return === null ? "not applicable" :
+              signature.sig_verify_return === 0 ? "0 (accept)" : signature.sig_verify_return + " (reject)"}</td></tr>
+      </table>
+      <p class="note hex mono" style="margin:10px 0 0">${signature.hex}</p>
+    </div>`).join("");
+  $("results").innerHTML = header + cards;
+}
+</script>
+</body>
+</html>

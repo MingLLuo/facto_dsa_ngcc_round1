@@ -1,0 +1,214 @@
+diff --git a/functional_test.c b/functional_test.c
+new file mode 100644
+--- /dev/null
++++ b/functional_test.c
+@@ -0,0 +1,75 @@
++/* Normal API regression test. Fixed seeds are test fixtures only. */
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include "SIG_AlgorithmInstance.h"
++#include "drng.h"
++
++DRNG_ctx drng_algorithm;
++
++static void clear_bytes(unsigned char *p, size_t n)
++{
++    volatile unsigned char *v = p;
++    while (n--) *v++ = 0;
++}
++
++int main(void)
++{
++    const unsigned long long lengths[] = {0, 1, 56};
++    const unsigned long long pcap = sig_get_pk_len_bytes();
++    const unsigned long long scap = sig_get_sk_len_bytes();
++    const unsigned long long zcap = sig_get_sn_len_bytes();
++    unsigned char *pk = calloc((size_t)pcap, 1);
++    unsigned char *sk = calloc((size_t)scap, 1);
++    unsigned char *sig = calloc((size_t)zcap, 1);
++    int failed = 0;
++    if (!pk || !sk || !sig) {
++        free(pk); free(sk); free(sig);
++        return 2;
++    }
++    for (unsigned int trial = 0; trial < 3; ++trial) {
++        unsigned char seed[64], message[56], changed[57];
++        unsigned long long plen = pcap, slen = scap, zlen = zcap;
++        int key_rc, sign_rc = -999, valid_rc = -999;
++        int changed_rc = -999, short_rc = -999;
++        for (size_t j = 0; j < sizeof(seed); ++j)
++            seed[j] = (unsigned char)(0x35u + j + 17u * trial);
++        for (size_t j = 0; j < sizeof(message); ++j)
++            message[j] = (unsigned char)(j + 11u * trial);
++        if (init_random_number(&drng_algorithm, seed, sizeof(seed)) != 0) {
++            failed = 1;
++            break;
++        }
++        key_rc = sig_keygen(pk, &plen, sk, &slen);
++        if (key_rc == 0 && plen == pcap && slen == scap)
++            sign_rc = sig_sign(sk, slen, message, lengths[trial], sig, &zlen);
++        if (sign_rc == 0 && zlen == zcap) {
++            valid_rc = sig_verify(pk, plen, sig, zlen, message, lengths[trial]);
++            memcpy(changed, message, (size_t)lengths[trial]);
++            changed[lengths[trial]] = 0xA5;
++            changed_rc = sig_verify(pk, plen, sig, zlen, changed, lengths[trial] + 1);
++            short_rc = sig_verify(pk, plen, sig, zlen - 1, message, lengths[trial]);
++        }
++        int passed = key_rc == 0 && sign_rc == 0 && valid_rc == 0 &&
++                     changed_rc != -999 && changed_rc != 0 &&
++                     short_rc != -999 && short_rc != 0 &&
++                     plen == pcap && slen == scap && zlen == zcap;
++        printf("{\"algorithm\":\"%s\",\"trial\":%u,\"message_bytes\":%llu,"
++               "\"q\":%u,\"n\":%d,\"m\":%d,\"pk_bytes\":%llu,"
++               "\"sk_bytes\":%llu,\"signature_bytes\":%llu,"
++               "\"keygen_rc\":%d,\"sign_rc\":%d,\"valid_verify_rc\":%d,"
++               "\"changed_message_rc\":%d,\"short_signature_rc\":%d,"
++               "\"passed\":%s}\n",
++               ALGORITHM_INSTANCE, trial, lengths[trial], FACTO_Q, FACTO_N, FACTO_M,
++               plen, slen, zlen, key_rc, sign_rc, valid_rc, changed_rc, short_rc,
++               passed ? "true" : "false");
++        fflush(stdout);
++        clear_bytes(sk, (size_t)scap);
++        clear_bytes(seed, sizeof(seed));
++        if (!passed) { failed = 1; break; }
++    }
++    clear_bytes(sk, (size_t)scap);
++    clear_bytes((unsigned char *)&drng_algorithm, sizeof(drng_algorithm));
++    free(sig); free(sk); free(pk);
++    return failed;
++}
+diff --git a/check_functional.py b/check_functional.py
+new file mode 100644
+--- /dev/null
++++ b/check_functional.py
+@@ -0,0 +1,90 @@
++"""Compile the original reference APIs and check ordinary sign/verify behavior.
++
++No recovery modules are loaded. Keys and signatures stay in the test process.
++Fixed test seeds must not be used for production keys.
++"""
++import argparse
++import hashlib
++import json
++from pathlib import Path
++import shutil
++import subprocess
++import tempfile
++import time
++
++EXPECTED = {
++    128: (10, 13, 40040, 3094, 40),
++    256: (17, 32, 456960, 11662, 68),
++    512: (32, 62, 5674240, 61922, 128),
++}
++
++
++def main():
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument('--source', type=Path, default=Path(__file__).resolve().parent)
++    parser.add_argument('--output', type=Path, required=True)
++    parser.add_argument('--cc', default='cc')
++    parser.add_argument('--timeout', type=int, default=180)
++    args = parser.parse_args()
++    if args.timeout <= 0:
++        parser.error('--timeout must be positive')
++    compiler = shutil.which(args.cc)
++    if compiler is None:
++        parser.error('C compiler not found')
++    args.output.mkdir(parents=True, exist_ok=True)
++    summary_path = args.output / 'results.json'
++    if summary_path.exists():
++        parser.error('output results.json exists; choose a fresh output directory')
++    harness = Path(__file__).resolve().with_name('functional_test.c')
++    report = {'scope': 'normal reference API functionality; not Recovery validation',
++              'compiler': subprocess.check_output([compiler, '--version'], text=True).splitlines()[0],
++              'harness_sha256': hashlib.sha256(harness.read_bytes()).hexdigest(),
++              'cases': [], 'failures': []}
++    with tempfile.TemporaryDirectory(prefix='factodsa-functional-') as tmp:
++        for level, expected in EXPECTED.items():
++            source = args.source.resolve() / f'Facto-DSA-{level}'
++            if not source.is_dir():
++                print(f'Facto-DSA-{level}: not vendored here, skipped')
++                continue
++            names = ['SIG_AlgorithmInstance.c', 'SIG_AlgorithmInstance.h',
++                     'drng.c', 'drng.h', 'auxfunc.c', 'auxfunc.h']
++            hashes = {name: hashlib.sha256((source / name).read_bytes()).hexdigest() for name in names}
++            exe = Path(tmp) / f'functional-{level}'
++            command = [compiler, '-std=c99', '-O2', '-Wall', '-Wextra', '-Wpedantic',
++                       '-I', str(source), str(harness)]
++            command += [str(source / name) for name in names if name.endswith('.c')]
++            command += ['-o', str(exe)]
++            started = time.monotonic()
++            try:
++                built = subprocess.run(command, capture_output=True, text=True, timeout=60)
++                (args.output / f'{level}-build.log').write_text(built.stdout + built.stderr)
++                built.check_returncode()
++                run = subprocess.run([str(exe)], capture_output=True, text=True, timeout=args.timeout)
++                (args.output / f'{level}-run.jsonl').write_text(run.stdout)
++                (args.output / f'{level}-stderr.log').write_text(run.stderr)
++                run.check_returncode()
++                rows = [json.loads(line) for line in run.stdout.splitlines() if line.strip()]
++                if len(rows) != 3 or not all(r['passed'] for r in rows):
++                    raise ValueError('not all three cases passed')
++                for row in rows:
++                    actual = tuple(row[k] for k in ('n', 'm', 'pk_bytes', 'sk_bytes', 'signature_bytes'))
++                    if actual != expected or row['q'] != 65519:
++                        raise ValueError('API parameter or byte size differs from PDF Table 2')
++                unchanged = all(hashlib.sha256((source / name).read_bytes()).hexdigest() == digest
++                                for name, digest in hashes.items())
++                if not unchanged:
++                    raise ValueError('source changed during test')
++                report['cases'].append({'level': level, 'rows': rows, 'source_sha256': hashes,
++                                        'source_unchanged': unchanged,
++                                        'compile_and_run_seconds': time.monotonic() - started})
++                print(f'Facto-DSA-{level}: 3/3 ordinary API cases passed', flush=True)
++            except (subprocess.SubprocessError, ValueError) as exc:
++                report['failures'].append({'level': level, 'error': str(exc)})
++                print(f'Facto-DSA-{level}: failed: {exc}', flush=True)
++            summary_path.write_text(json.dumps(report, indent=2) + '\n')
++    if report['failures']:
++        raise SystemExit(1)
++
++
++if __name__ == '__main__':
++    main()
+diff --git a/FUNCTIONAL_CHECK.md b/FUNCTIONAL_CHECK.md
+new file mode 100644
+--- /dev/null
++++ b/FUNCTIONAL_CHECK.md
+@@ -0,0 +1,34 @@
++# Reference API functional checks
++
++This patch adds a standalone harness; it does not change cryptographic sources
++or load any structural recovery code. Run it from a copy of the supplied
++Reference_Implementation directory containing Facto-DSA-128, -256 and -512:
++
++```sh
++patch --dry-run -p1 < /absolute/path/reference-functional-check.patch
++patch -p1 < /absolute/path/reference-functional-check.patch
++python3 check_functional.py --output /absolute/path/fresh-test-results
++```
++
++Alternatively, without applying the patch, run the provided script with
++`--source /absolute/path/Reference_Implementation` and an output directory.
++Requirements: Python 3 and a C99 compiler (`cc`, or use `--cc clang`). No Python
++packages or network access are needed. Compiled binaries use temporary paths.
++
++For each of the three parameter sets the harness calls the supplied DRNG,
++sig_keygen, sig_sign and sig_verify with message lengths 0, 1 and 56 bytes.
++Each case uses a newly generated key. Checks cover returned lengths, successful
++verification, rejection of an appended message byte and rejection of a signature
++with its final byte removed. The runner also compares the parameter and length
++values with specification Table 2 and records source hashes before/after.
++
++The fixed seeds are test fixtures only, never production key material. Secret
++keys stay in process memory and are wiped before free; the harness writes no
++key, signature or seed payload. JSON output contains only metadata and return
++codes. Thus these artifacts validate ordinary API functionality, not Recovery,
++forgery, security levels, all possible keys or exact PDF conformance.
++
++Each compile has a 60-second timeout; each parameter-set executable has a
++180-second default timeout, adjustable with --timeout. A failed case or timeout
++is recorded and never automatically retried. Existing results.json is not
++overwritten. The runner continues to the other independent parameter sets.

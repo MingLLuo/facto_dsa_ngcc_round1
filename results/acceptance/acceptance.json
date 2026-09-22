@@ -1,0 +1,43 @@
+{
+  "source": "kat",
+  "n": 10,
+  "m": 13,
+  "q": 65519,
+  "message": "Facto-DSA acceptance test",
+  "public_key_bytes": 40040,
+  "target_seconds": 0.12,
+  "target": [
+    48564,
+    55629,
+    37162,
+    38119,
+    42104,
+    31386,
+    41268,
+    40059,
+    13545,
+    41432,
+    21866,
+    48274,
+    56648
+  ],
+  "forge_seconds": 10.316,
+  "forge_status": "forged",
+  "forge_report": {
+    "n": 10,
+    "m": 13,
+    "recover_seconds": 0.08492750000732485,
+    "flag_seconds": 9.414726250004605,
+    "total_seconds": 10.315677708989824,
+    "status": "forged",
+    "solve_seconds": 0.8062844579981174,
+    "solve_method": "parametrization",
+    "target_seconds": 0.8128907499922207,
+    "bilinear_solutions": 3,
+    "solutions_tried": 14
+  },
+  "signature_bytes": 40,
+  "sig_verify_return_code": "0",
+  "negative_control_flipped_bit": "-1",
+  "acceptance": "ACCEPTED by the authors' sig_verify"
+}

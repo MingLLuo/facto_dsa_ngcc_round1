@@ -1,0 +1,7 @@
+numpy>=1.26
+# optional, figures only
+matplotlib>=3.7
+# external binaries, not installed by pip:
+#   msolve >= 0.10   (Groebner bases and rational parametrisations)
+#   a C compiler     (builds the FLINT backend and the acceptance helper)
+#   FLINT            (headers + library, for the exact F_q backend)

@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Facto-DSA 128-bit: forging from the public key alone</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: light-dark(#fbfaf8, #17181a);
+    --panel: light-dark(#ffffff, #202225);
+    --ink: light-dark(#1c1d1f, #ececed);
+    --muted: light-dark(#5d6166, #a2a6ab);
+    --line: light-dark(#dcd9d4, #33363a);
+    --accent: light-dark(#2f6f4f, #7fc79b);
+    --warn: light-dark(#a5561f, #e0a06a);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 28px 20px 56px;
+    background: var(--bg); color: var(--ink);
+    font: 15px/1.55 ui-sans-serif, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 760px; margin: 0 auto; }
+  h1 { font-size: 21px; font-weight: 500; margin: 0 0 6px; }
+  h2 { font-size: 16px; font-weight: 500; margin: 0 0 10px; }
+  p { margin: 0 0 12px; }
+  .sub { color: var(--muted); margin-bottom: 18px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 22px; }
+  .chip {
+    border: 1px solid var(--line); border-radius: 999px;
+    padding: 3px 11px; font-size: 13px; color: var(--muted);
+  }
+  .chip strong { color: var(--ink); font-weight: 500; }
+  nav { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 18px; }
+  nav button {
+    font: inherit; font-size: 13px; color: var(--muted);
+    background: transparent; border: 1px solid var(--line);
+    border-radius: 8px; padding: 5px 10px; cursor: pointer;
+  }
+  nav button[aria-current="true"] {
+    background: var(--panel); color: var(--ink); border-color: var(--accent);
+  }
+  section { display: none; }
+  section.active { display: block; }
+  .card {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; padding: 16px 18px; margin-bottom: 14px;
+  }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 400; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .ok { color: var(--accent); }
+  .bad { color: var(--warn); }
+  .row { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+  .facts { list-style: none; padding: 0; margin: 10px 0 0; }
+  .facts li { padding: 3px 0; font-size: 14px; color: var(--muted); }
+  .facts b { color: var(--ink); font-weight: 500; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; }
+  .grid { display: grid; gap: 4px; }
+  .cells { grid-template-columns: repeat(10, 1fr); }
+  .cell {
+    border: 1px solid var(--line); border-radius: 6px;
+    padding: 5px 2px; text-align: center; font-size: 12px;
+    font-variant-numeric: tabular-nums;
+  }
+  .cell.x { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+  .cell.y { background: color-mix(in srgb, var(--ink) 8%, transparent); }
+  button.plain {
+    font: inherit; font-size: 13px; color: var(--ink);
+    background: transparent; border: 1px solid var(--line);
+    border-radius: 8px; padding: 5px 10px; cursor: pointer;
+  }
+  .note { color: var(--muted); font-size: 13px; }
+  .bar { display: flex; height: 46px; border-radius: 8px; overflow: hidden; }
+  .bar div { display: flex; align-items: center; justify-content: center; font-size: 13px; }
+  .grow { flex: 1; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Facto-DSA, 128-bit set: a signature from the public key alone</h1>
+  <p class="sub" id="headline"></p>
+  <div class="chips" id="chips"></div>
+
+  <nav id="steps"></nav>
+
+  <section id="s1">
+    <h2>1 &middot; Everything the attack gets</h2>
+    <p>A public key, a message, and the protocol target those two produce. No
+       secret key, no signing oracle.</p>
+    <div class="card">
+      <table>
+        <tr><th>public key</th><td class="num" id="keybytes"></td></tr>
+        <tr><th>source</th><td class="mono" id="keysource"></td></tr>
+        <tr><th>message</th><td id="message"></td></tr>
+      </table>
+    </div>
+    <div class="card">
+      <h2>Target <span class="note">(13 field elements, from the key and the message)</span></h2>
+      <div class="grid cells" id="target"></div>
+    </div>
+  </section>
+
+  <section id="s2">
+    <h2>2 &middot; The fingerprint: 45 dimensions are missing</h2>
+    <p>The public map is built as <code>(quadratic in x) &times; y</code>. Its first
+       derivatives can therefore only reach part of the space of quadratic forms.</p>
+    <div class="card">
+      <div class="bar">
+        <div id="spanned"></div>
+        <div id="defect"></div>
+      </div>
+      <p class="note" style="margin:10px 0 0" id="fingerprint-note"></p>
+      <ul class="facts" id="fingerprint-facts"></ul>
+    </div>
+  </section>
+
+  <section id="s3">
+    <h2>3 &middot; The split comes out of linear algebra</h2>
+    <p>The images of the trace annihilator of that derivative space span exactly
+       the hidden <code>x</code>-half of the variables. Nothing is searched for.</p>
+    <div class="card">
+      <div class="row">
+        <div class="grid cells grow" id="coords"></div>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <button class="plain" id="toggle-split">show the recovered split</button>
+        <span class="note" id="split-note"></span>
+      </div>
+    </div>
+  </section>
+
+  <section id="s4">
+    <h2>4 &middot; A triangular basis of the quadratic factor</h2>
+    <p>In those coordinates the quadratic part <em>is</em> the triangular map up to
+       a change of basis. Triangularity is a property of the space it spans, so a
+       triangular flag is recovered by peeling rank-one points.</p>
+    <div class="card">
+      <table>
+        <thead><tr><th>level</th><th class="num">certificate dim(U<sub>Q</sub> &cap; Sym&sup2;F<sub>i</sub>)</th>
+        <th class="num">leading square</th><th class="num">status</th></tr></thead>
+        <tbody id="flag"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="s5">
+    <h2>5 &middot; The equation collapses</h2>
+    <p>Slicing only the <code>y</code>-block and eliminating the <code>a</code>-block
+       leaves <code>f = m - n</code> equations, of degree at most <code>n</code>.</p>
+    <div class="card row">
+      <div class="grow">
+        <h2>As published</h2>
+        <ul class="facts" id="raw"></ul>
+      </div>
+      <div class="grow">
+        <h2>After the split</h2>
+        <ul class="facts" id="reduced"></ul>
+      </div>
+    </div>
+  </section>
+
+  <section id="s6">
+    <h2>6 &middot; The forged signature</h2>
+    <p>Twenty field elements, 40 bytes, handed to the submitters&rsquo; own
+       verification code.</p>
+    <div class="card">
+      <div class="grid cells" id="z"></div>
+      <p class="note mono" style="margin:12px 0 0" id="zhex"></p>
+    </div>
+    <div class="card">
+      <h2>Verification</h2>
+      <table>
+        <tr><th>every public cubic coefficient of P(z) against h</th>
+            <td class="num" id="coeffs"></td></tr>
+        <tr><th>submitters&rsquo; sig_verify on the forged signature</th>
+            <td class="num" id="accept"></td></tr>
+        <tr><th>same signature, one bit flipped</th>
+            <td class="num" id="flipped"></td></tr>
+      </table>
+      <p class="note" style="margin:12px 0 0" id="timings"></p>
+    </div>
+    <p class="note">Reproduce the whole run with
+      <code>python3 scripts/run_acceptance.py --source kat</code>.</p>
+  </section>
+</main>
+
+<script>window.__ATTACK_DATA__ = __DATA__;</script>
+<script>
+const data = window.__ATTACK_DATA__;
+if (!data) {
+  document.querySelector("main").innerHTML =
+    "<h1>This is the template, not the built page</h1>"
+    + "<p>Run <code>python3 scripts/make_attack_demo.py</code>, then open "
+    + "<code>demo/attack-128.html</code>.</p>";
+  throw new Error("template without data");
+}
+const $ = id => document.getElementById(id);
+
+$("headline").textContent =
+  `Public key ${data.key.bytes.toLocaleString()} bytes -> a ${data.signature.bytes}-byte signature `
+  + `that the submitters' own sig_verify accepts (return code ${data.signature.accept_return}).`;
+$("chips").innerHTML = [
+  `q = ${data.params.q}`, `n = ${data.params.n}`, `m = ${data.params.m}`,
+  `${data.reduce.raw_equations} cubics in ${data.reduce.raw_unknowns} unknowns`,
+  `becomes ${data.reduce.free} unknowns`,
+  `${data.signature.recorded.total} s, recorded run`,
+].map(t => `<span class="chip">${t}</span>`).join("");
+
+$("keybytes").textContent = `${data.key.bytes.toLocaleString()} bytes`;
+$("keysource").textContent = data.key.source;
+$("message").textContent = data.message;
+$("target").innerHTML = data.target.map(v => `<div class="cell mono">${v}</div>`).join("");
+
+const fp = data.fingerprint;
+$("spanned").style.cssText =
+  `flex:${fp.spanned}; background:color-mix(in srgb, var(--accent) 30%, transparent);`;
+$("spanned").textContent = `${fp.spanned} reached`;
+$("defect").style.cssText =
+  `flex:${fp.defect}; background:color-mix(in srgb, var(--warn) 22%, transparent);`;
+$("defect").textContent = `${fp.defect} missing`;
+$("fingerprint-note").textContent =
+  `Out of the ${fp.ambient} quadratic forms in ${data.params.N} variables, the derivatives reach `
+  + `${fp.spanned}. The ${fp.defect} that are missing are the x-squared block.`;
+$("fingerprint-facts").innerHTML = [
+  `<b>${fp.expected_defect} = n(n&minus;1)/2</b> &mdash; a property of the construction, not of the key`,
+  `<b>exact</b> &mdash; the annihilator identity holds on the real coefficients`,
+].map(t => `<li>${t}</li>`).join("");
+
+$("coords").innerHTML = Array.from({length: data.params.N}, (_, i) =>
+  `<div class="cell mono" data-role="${i < data.split.x ? "x" : "y"}">${i}</div>`).join("");
+let splitShown = false;
+$("toggle-split").onclick = () => {
+  splitShown = !splitShown;
+  document.querySelectorAll("#coords .cell").forEach(c => {
+    c.classList.toggle(c.dataset.role, splitShown);
+  });
+  $("toggle-split").textContent = splitShown ? "hide the recovered split" : "show the recovered split";
+  $("split-note").innerHTML = splitShown
+    ? `first ${data.split.x} coordinates = the hidden <code>x</code>-half, last ${data.split.y} = the <code>y</code>-half`
+    : "";
+};
+
+$("flag").innerHTML = data.flag.diagonal.map((v, i) =>
+  `<tr><td>${i}</td><td class="num">${i + 1}</td><td class="num mono">${v}</td>`
+  + `<td class="num ok">nonzero square</td></tr>`).join("");
+
+$("raw").innerHTML = [
+  `<b>${data.reduce.raw_equations}</b> cubic equations`,
+  `<b>${data.reduce.raw_unknowns}</b> unknowns`,
+  `<b>${data.reduce.raw_monomials.toLocaleString()}</b> coefficients per equation`,
+  `B&eacute;zout <b>3<sup>${data.reduce.raw_equations}</sup> &asymp; ${data.reduce.raw_bezout.toExponential(2)}</b>`,
+].map(t => `<li>${t}</li>`).join("");
+$("reduced").innerHTML = [
+  `<b>${data.reduce.free}</b> equations of degree &le; <b>${data.reduce.degree}</b>`,
+  `<b>${data.reduce.free}</b> unknowns`,
+  `<b>${data.reduce.residual_monomials.toLocaleString()}</b> monomials to interpolate`,
+  `B&eacute;zout <b>${data.reduce.bezout.toLocaleString()}</b>`,
+  `<b class="ok">msolve</b> returns its parametrisation in ${data.signature.recorded.solve} s`,
+].map(t => `<li>${t}</li>`).join("");
+
+$("z").innerHTML = data.signature.z.map(v => `<div class="cell mono">${v}</div>`).join("");
+$("zhex").textContent = data.signature.hex;
+$("coeffs").innerHTML = data.signature.verified
+  ? `<span class="ok">${data.signature.coefficients} / ${data.signature.coefficients} equal</span>`
+  : `<span class="bad">${data.signature.mismatches} mismatches</span>`;
+$("accept").innerHTML = `<span class="ok">${data.signature.accept_return} (accept)</span>`;
+$("flipped").innerHTML = `<span class="bad">${data.signature.flipped_return} (reject)</span>`;
+$("timings").textContent =
+  `Recorded run on this key: structure ${data.signature.recorded.recover} s, `
+  + `triangular flag ${data.signature.recorded.flag} s, reduced solve ${data.signature.recorded.solve} s, `
+  + `total ${data.signature.recorded.total} s.`;
+
+const names = ["everything the attack gets", "fingerprint", "the split", "triangular flag",
+               "the collapse", "the signature"];
+$("steps").innerHTML = names.map((name, i) =>
+  `<button data-step="${i + 1}">${i + 1} &middot; ${name}</button>`).join("");
+let current = 1;
+function show(step) {
+  current = Math.min(names.length, Math.max(1, step));
+  for (let i = 1; i <= names.length; i++) {
+    $("s" + i).classList.toggle("active", i === current);
+    document.querySelector(`nav button[data-step="${i}"]`)
+      .setAttribute("aria-current", String(i === current));
+  }
+  window.scrollTo({top: 0, behavior: "smooth"});
+}
+$("steps").onclick = event => {
+  const button = event.target.closest("button[data-step]");
+  if (button) show(Number(button.dataset.step));
+};
+document.addEventListener("keydown", event => {
+  if (event.key === "ArrowRight") show(current + 1);
+  if (event.key === "ArrowLeft") show(current - 1);
+});
+show(1);
+</script>
+</body>
+</html>

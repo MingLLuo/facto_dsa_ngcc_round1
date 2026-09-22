@@ -1,0 +1,19 @@
+[
+  {
+    "target_bits": 160,
+    "n": 14,
+    "m": 15,
+    "f": 1,
+    "structure_seconds": 0.17,
+    "structure_peak_mib": 97.2,
+    "flag_seconds": 114.29,
+    "flag_ok": true,
+    "solve_method": "parametrization",
+    "free_parameters": 1,
+    "residual_degree_bound": 14,
+    "gr_seconds": 0.02,
+    "pairs": 3,
+    "pairs_valid": 3,
+    "peak_mib": 105.0
+  }
+]

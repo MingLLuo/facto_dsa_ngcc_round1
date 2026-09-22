@@ -1,0 +1,30 @@
+[
+  {
+    "n": 10,
+    "m": 13,
+    "seconds": 0.05,
+    "peak_mib": 50.8,
+    "status": "certified"
+  },
+  {
+    "n": 14,
+    "m": 15,
+    "seconds": 0.17,
+    "peak_mib": 101.9,
+    "status": "certified"
+  },
+  {
+    "n": 17,
+    "m": 32,
+    "seconds": 0.57,
+    "peak_mib": 155.8,
+    "status": "certified"
+  },
+  {
+    "n": 32,
+    "m": 62,
+    "seconds": 19.08,
+    "peak_mib": 1377.7,
+    "status": "certified"
+  }
+]
