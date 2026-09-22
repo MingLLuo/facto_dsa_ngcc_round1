@@ -120,6 +120,23 @@ this folder, and this repository is the consolidated version of it.  Parts of
 the mathematical route were shaped by ideas that came up in discussion with
 **GPT-6 Astra**.
 
+A note on provenance, to keep two things apart.  The attack on **projected**
+Facto-DSA and its proof are the material of the M1 report (*Cryptanalysis of
+Factorization-Based Multivariate Signatures*): that work was done **without AI**,
+and the report is the place to read the intuition behind the projected attack.
+Projected Facto-DSA is a different scheme variant from the cubic submission
+attacked here, so the report does not describe this repository.
+
+This repository is the separate implementation for the standard 128-bit set of
+the cubic submission.  What the assistants listed above contributed is that
+implementation, its benchmarks and its documentation.
+
+One caveat from the author: these tools help spot patterns, find witnesses and
+get small-scale implementations running quickly, but some of the mathematics
+still needs manual checking, the attack angles they suggest can be hard to
+follow and are not always well motivated, and there are parts of the attack
+implemented here that I do not fully understand myself yet.
+
 Every number here is a recorded run of the scripts in `scripts/`, re-executed
 after each change, and every claim is decided by an exact certificate or by the
 submitter's own verification code - not by the assistant.  This is unofficial
