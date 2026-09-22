@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Facto-DSA (sign-10): a signature from the public key alone</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: light-dark(#fbfaf8, #17181a);
+    --panel: light-dark(#ffffff, #202225);
+    --ink: light-dark(#1c1d1f, #ececed);
+    --muted: light-dark(#5d6166, #a2a6ab);
+    --line: light-dark(#dcd9d4, #33363a);
+    --accent: light-dark(#2f6f4f, #7fc79b);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 40px 20px 64px; background: var(--bg); color: var(--ink);
+    font: 15px/1.55 ui-sans-serif, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 760px; margin: 0 auto; }
+  h1 { font-size: 24px; font-weight: 500; margin: 0 0 10px; }
+  h2 { font-size: 16px; font-weight: 500; margin: 0 0 8px; }
+  p { margin: 0 0 12px; }
+  .sub { color: var(--muted); font-size: 16px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 18px 0 26px; }
+  .chip { border: 1px solid var(--line); border-radius: 999px; padding: 3px 11px;
+          font-size: 13px; color: var(--muted); }
+  a.card {
+    display: block; text-decoration: none; color: inherit;
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; padding: 16px 18px; margin-bottom: 14px;
+  }
+  a.card:hover { border-color: var(--accent); }
+  a.card p { margin: 0; color: var(--muted); font-size: 14px; }
+  a.card span.more { color: var(--accent); font-size: 14px; }
+  img { width: 100%; border-radius: 12px; border: 1px solid var(--line); display: block; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+  pre { background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+        padding: 12px 14px; overflow-x: auto; margin: 0 0 12px; }
+  .note { color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Facto-DSA (<code>sign-10</code>): a signature from the public key alone</h1>
+  <p class="sub">At the standard 128-bit parameters (<code>q = 65519</code>,
+     <code>n = 10</code>, <code>m = 13</code>) the public key determines an
+     <em>equivalent</em> internal description of the submitted scheme, and that
+     description yields a 40-byte signature that the submitters' own
+     <code>sig_verify</code> accepts.  No secret key and no signing oracle is
+     used anywhere.</p>
+  <div class="chips">
+    <span class="chip">derivative space 165 of 210</span>
+    <span class="chip">45 missing = n(n&minus;1)/2</span>
+    <span class="chip">13 cubics in 20 unknowns &rarr; 3 in 3</span>
+    <span class="chip">40-byte signature, verifier returns 0</span>
+  </div>
+
+  <a class="card" href="demo/attack-128.html">
+    <h2>Interactive walkthrough of one real run &rarr;</h2>
+    <p>Six steps over the vendored KAT key and a signature the attack produced:
+       the dimension defect, the recovered split, the triangular flag, the
+       collapse of the target equation, and the term-by-term check of
+       <code>P(z) = h</code>.</p>
+  </a>
+
+  <a class="card" href="figures/why-it-breaks.png">
+    <h2>Why the construction leaks &rarr;</h2>
+    <p>Left: the public derivative space is 45 dimensions short and the missing
+       block names the hidden variable split.  Right: the same fact reduces the
+       target equation to three unknowns.</p>
+    <img src="figures/why-it-breaks.png" alt="Derivative-space defect and the reduced target system">
+  </a>
+
+  <a class="card" href="https://github.com/MingLLuo/facto_dsa_ngcc_round1#readme">
+    <h2>Read the repository &rarr;</h2>
+    <p>Attack chain, complexity, acceptance against the submitters' verifier,
+       and the limitations of the result - plus the recorded runs the numbers
+       on this page come from.</p>
+  </a>
+
+  <h2 style="margin:26px 0 10px">Reproduce it</h2>
+  <pre><code>git clone https://github.com/MingLLuo/facto_dsa_ngcc_round1
+cd facto_dsa_ngcc_round1
+python3 scripts/check_environment.py            # prints READY
+python3 scripts/run_standard_128.py             # forged, ~14 s
+python3 scripts/run_acceptance.py --source kat  # the authors' sig_verify returns 0
+python3 scripts/forge_server.py                 # forge signatures for your own messages</code></pre>
+  <p class="note">The forger runs locally: it needs a Python process, FLINT and
+     <code>msolve</code>, so it is not part of this static page.  This page and
+     the walkthrough are self-contained HTML with no external assets.</p>
+</main>
+</body>
+</html>
